@@ -67,14 +67,11 @@ export async function getImplementationDetail(implementationId: string) {
   };
 }
 
+// Marca a tarefa como concluída e recalcula módulo/implantação de forma
+// atômica no banco (ver supabase/migrations/0006_complete_task_rpc.sql) —
+// evita reimplementar essa regra de recálculo em cada tela que conclui tarefa.
 export async function completeTask(taskId: string) {
-  const { data, error } = await supabase
-    .from("implementation_tasks")
-    .update({ status: "done", completed_at: new Date().toISOString() })
-    .eq("id", taskId)
-    .select()
-    .single();
-
+  const { data, error } = await supabase.rpc("complete_task", { p_task_id: taskId });
   if (error) throw error;
   return data as ImplementationTask;
 }
