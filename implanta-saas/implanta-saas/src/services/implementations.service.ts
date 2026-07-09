@@ -1,4 +1,5 @@
 import { supabase } from "@/config/supabase";
+import type { Implementation, ImplementationModule, ImplementationTask } from "@/types/domain";
 
 export async function listImplementations(organizationId: string) {
   const { data, error } = await supabase
@@ -35,6 +36,47 @@ export async function createImplementationFromTemplate(params: {
 
   if (error) throw error;
   return implementationId as string;
+}
+
+// Busca a implantação com módulos e tarefas pra tela de detalhe (área logada).
+// Diferente de getImplementationByPublicToken: seleciona a tabela direto
+// (protegida por RLS), não passa pela RPC pública.
+export async function getImplementationDetail(implementationId: string) {
+  const { data, error } = await supabase
+    .from("implementations")
+    .select("*, clients(name, phone), implementation_modules(*, implementation_tasks(*))")
+    .eq("id", implementationId)
+    .single();
+
+  if (error) throw error;
+
+  // Ordena no client — mesmo motivo de getTemplateWithModules em templates.service.ts.
+  const modules = (data.implementation_modules ?? [])
+    .slice()
+    .sort((a: ImplementationModule, b: ImplementationModule) => a.position - b.position)
+    .map((m: ImplementationModule & { implementation_tasks: ImplementationTask[] }) => ({
+      ...m,
+      implementation_tasks: (m.implementation_tasks ?? [])
+        .slice()
+        .sort((a: ImplementationTask, b: ImplementationTask) => a.position - b.position),
+    }));
+
+  return { ...data, implementation_modules: modules } as Implementation & {
+    clients: { name: string; phone: string | null };
+    implementation_modules: (ImplementationModule & { implementation_tasks: ImplementationTask[] })[];
+  };
+}
+
+export async function completeTask(taskId: string) {
+  const { data, error } = await supabase
+    .from("implementation_tasks")
+    .update({ status: "done", completed_at: new Date().toISOString() })
+    .eq("id", taskId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as ImplementationTask;
 }
 
 // Usado pela página pública de status — chama a function
